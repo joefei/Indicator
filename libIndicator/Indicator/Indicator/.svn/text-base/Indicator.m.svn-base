@@ -1,0 +1,179 @@
+//
+//  Indicator.m
+//  Indicator
+//
+//  Created by OrangeLife on 15/8/27.
+//  Copyright (c) 2015年 Shenme Studio. All rights reserved.
+//
+
+#import "Indicator.h"
+#import "IndicatorLoadingView.h"
+#include "IndicatorConfigure.h"
+
+static Indicator *_indicatorInstance;
+
+typedef enum : NSUInteger {
+    IndicatorStateStatic,
+    IndicatorStateLoading,
+    IndicatorStateAlert,
+} IndicatorState;
+
+@interface Indicator()
+{
+    UIWindow *window;
+    UIView *maskLayer;
+    NSTimer *timer;
+    IndicatorLoadingView *loadingView;
+    IndicatorState state;
+    NSInteger loadingCount;
+    IndicatorAlertView *alertView;
+}
+@end
+
+@implementation Indicator
++(instancetype)shareInstancetype
+{
+    if (nil == _indicatorInstance) {
+        _indicatorInstance = [[super allocWithZone:NULL] init];
+    }
+    return  _indicatorInstance;
+}
+
++ (id)allocWithZone:(struct _NSZone *)zone
+{
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        _indicatorInstance = [super allocWithZone:zone];
+    });
+    return _indicatorInstance;
+}
+
+- (instancetype)init
+{
+    if (self = [super init])
+    {
+        state = IndicatorStateStatic;
+        loadingCount = 0;
+    }
+    return self;
+}
+
+-(void)initConfigure
+{
+    window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+    [window setWindowLevel:UIWindowLevelAlert];
+    [window makeKeyAndVisible];
+    [window setHidden:YES];
+    
+    maskLayer = [[UIView alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+    [maskLayer setBackgroundColor:[UIColor colorWithRed:0 green:0 blue:0 alpha:0.3]];
+    [maskLayer setAlpha:0];
+    [window addSubview:maskLayer];
+}
+
+#pragma mark
+- (IndicatorLoadingView *)loadingView
+{
+    if (!loadingView)
+    {
+        loadingView = [[IndicatorLoadingView alloc] initWithFrame:CGRectMake(0, 0, IndicatorContentViewWidth, IndicatorContentViewHeight)];
+        [loadingView setCenter:CGPointMake(kWidth/2, kHeight/2)];
+    }
+    [loadingView setAlpha:0];
+    return loadingView;
+}
+
+- (void)showLoading
+{
+    return [self showLoadingWithTip:nil];
+}
+
+- (void)showLoadingWithTip:(NSString *)tip
+{
+    if (IndicatorStateLoading == state)
+    {
+        loadingCount += 1;
+        [timer invalidate];
+        timer = [NSTimer timerWithTimeInterval:IndicatorDelay target:self selector:@selector(dismiss) userInfo:nil repeats:NO];
+        [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+        return;
+    }
+    
+    [window setHidden:NO];
+    [window addSubview:self.loadingView];
+    [self.loadingView setTipText:tip];
+    state = IndicatorStateLoading;
+    loadingCount += 1;
+    [UIView animateWithDuration:IndicatorDuration animations:^{
+        [maskLayer setAlpha:1];
+        [self.loadingView setAlpha:1];
+    }];
+   
+    
+    timer = [NSTimer timerWithTimeInterval:IndicatorDelay target:self selector:@selector(dismiss) userInfo:nil repeats:NO];
+    [[NSRunLoop currentRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+}
+
+-(void)showAlertWithTitle:(NSString *)title message:(NSString *)message alertStyle:(IndicatorAlertStyle)alertStyle cancelButtonTitle:(NSString *)cancelButtonTitle otherButtonTitles:(NSArray *)otherButtonTitles completion:(void (^)(IndicatorAlertView *alertView, NSInteger buttonIndex))completion
+{
+    if (state == IndicatorStateLoading)
+    {
+        [timer invalidate];
+        [loadingView setAlpha:0];
+        loadingCount = 0;
+    }
+    else if (state == IndicatorStateAlert)
+    {
+        [alertView removeFromSuperview];
+    }
+    
+    state = IndicatorStateAlert;
+    alertView = [[IndicatorAlertView alloc] initWithTitle:title message:message alertStyle:alertStyle cancelButtonTitle:cancelButtonTitle otherButtonTitles:otherButtonTitles completion:completion];
+    [window addSubview:alertView];
+    [window setHidden:NO];
+    [UIView animateWithDuration:IndicatorDuration animations:^{
+        [maskLayer setAlpha:1];
+        [alertView setAlpha:1];
+    }];
+}
+
+-(void)dismiss
+{
+    if (state == IndicatorStateStatic)
+    {
+        return;
+    }
+    else if (state == IndicatorStateLoading)
+    {
+        if (--loadingCount)
+        {
+            return;
+        }
+    }
+    if (state == IndicatorStateLoading)
+    {
+        [timer invalidate];
+        state = IndicatorStateStatic;
+        loadingCount = 0;
+        [UIView animateWithDuration:IndicatorDuration animations:^{
+            [maskLayer setAlpha:0];
+            [self.loadingView setAlpha:0];
+        } completion:^(BOOL finished) {
+            [window setHidden:YES];
+            [self.loadingView removeFromSuperview];
+        }];
+    }
+    else if (state == IndicatorStateAlert)
+    {
+        state = IndicatorStateStatic;
+        [UIView animateWithDuration:IndicatorDuration animations:^{
+            [maskLayer setAlpha:0];
+            [alertView setAlpha:0];
+        } completion:^(BOOL finished) {
+            [window setHidden:YES];
+            [alertView removeFromSuperview];
+            alertView = nil;
+        }];
+    }
+}
+@end
